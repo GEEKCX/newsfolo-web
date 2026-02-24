@@ -1,22 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { fetchNews, CATEGORIES, getMarketData, NewsItem } from '@/lib/news';
+
+// 自动刷新间隔 (毫秒)
+const AUTO_REFRESH_INTERVAL = 5 * 60 * 1000; // 5分钟
 
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<string>('');
+  const [isAutoRefresh, setIsAutoRefresh] = useState(true);
 
   const marketData = getMarketData();
 
-  useEffect(() => {
-    loadNews();
-  }, [activeCategory]);
-
-  async function loadNews() {
-    setLoading(true);
+  const loadNews = useCallback(async () => {
     try {
       const data = await fetchNews(activeCategory);
       setNews(data);
@@ -25,7 +24,25 @@ export default function Home() {
       console.error('Error loading news:', error);
     }
     setLoading(false);
-  }
+  }, [activeCategory]);
+
+  // 初始加载 + 分类切换
+  useEffect(() => {
+    setLoading(true);
+    loadNews();
+  }, [loadNews]);
+
+  // 自动刷新
+  useEffect(() => {
+    if (!isAutoRefresh) return;
+    
+    const interval = setInterval(() => {
+      console.log('🔄 自动刷新新闻...');
+      loadNews();
+    }, AUTO_REFRESH_INTERVAL);
+    
+    return () => clearInterval(interval);
+  }, [isAutoRefresh, loadNews]);
 
   return (
     <main>
@@ -95,6 +112,14 @@ export default function Home() {
               style={{ marginLeft: 'auto' }}
             >
               {loading ? '🔄 加载中...' : '🔄 刷新'}
+            </button>
+            <button 
+              className="refresh-btn" 
+              onClick={() => setIsAutoRefresh(!isAutoRefresh)}
+              style={{ marginLeft: '10px', background: isAutoRefresh ? '#10b981' : '#64748b' }}
+              title={isAutoRefresh ? '自动刷新已开启 (每5分钟)' : '自动刷新已关闭'}
+            >
+              {isAutoRefresh ? '⏱️ 自动' : '⏸️ 手动'}
             </button>
           </div>
 
