@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchNews, CATEGORIES, getMarketData, NewsItem } from '@/lib/news';
 
 // 自动刷新间隔 (毫秒)
-const AUTO_REFRESH_INTERVAL = 5 * 60 * 1000; // 5分钟
+const AUTO_REFRESH_INTERVAL = 60 * 1000; // 1分钟 (更实时)
 
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState('all');
