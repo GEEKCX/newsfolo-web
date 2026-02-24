@@ -1,7 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { fetchNews, CATEGORIES, getMarketData, NewsItem } from '@/lib/news';
+import { fetchNews, CATEGORIES, NewsItem } from '@/lib/news';
+
+// Market data type
+interface MarketItem {
+  label: string;
+  value: string;
+  change: string;
+  up: boolean;
+}
 
 // 自动刷新间隔 (毫秒)
 const AUTO_REFRESH_INTERVAL = 60 * 1000; // 1分钟 (更实时)
@@ -9,11 +17,10 @@ const AUTO_REFRESH_INTERVAL = 60 * 1000; // 1分钟 (更实时)
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [news, setNews] = useState<NewsItem[]>([]);
+  const [marketData, setMarketData] = useState<MarketItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<string>('');
   const [isAutoRefresh, setIsAutoRefresh] = useState(true);
-
-  const marketData = getMarketData();
 
   const loadNews = useCallback(async () => {
     try {
@@ -26,19 +33,34 @@ export default function Home() {
     setLoading(false);
   }, [activeCategory]);
 
+  // 加载市场数据
+  const loadMarketData = useCallback(async () => {
+    try {
+      const response = await fetch('/api/market');
+      const data = await response.json();
+      if (data.market) {
+        setMarketData(data.market);
+      }
+    } catch (error) {
+      console.error('Error loading market data:', error);
+    }
+  }, []);
+
   // 初始加载 + 分类切换
   useEffect(() => {
     setLoading(true);
     loadNews();
-  }, [loadNews]);
+    loadMarketData();
+  }, [loadNews, loadMarketData]);
 
   // 自动刷新
   useEffect(() => {
     if (!isAutoRefresh) return;
     
     const interval = setInterval(() => {
-      console.log('🔄 自动刷新新闻...');
+      console.log('🔄 自动刷新新闻和市场数据...');
       loadNews();
+      loadMarketData();
     }, AUTO_REFRESH_INTERVAL);
     
     return () => clearInterval(interval);
