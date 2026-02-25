@@ -1,82 +1,154 @@
 import { NextResponse } from 'next/server';
 
-// Market data API - uses Yahoo Finance (via query1.finance.yahoo.com)
-const MARKET_SYMBOLS = {
-  'S&P 500': '^GSPC',
-  '纳斯达克': '^IXIC',
-  '道琼斯': '^DJI',
-  '黄金': 'GC=F',
-  '原油': 'CL=F',
-  '比特币': 'BTC-USD',
-  '欧元/美元': 'EURUSD=X',
-  '英镑/美元': 'GBPUSD=X',
-};
+// Try multiple data sources for market data
+const MARKET_SYMBOLS = [
+  { label: 'S&P 500', symbol: '^GSPC' },
+  { label: '纳斯达克', symbol: '^IXIC' },
+  { label: '道琼斯', symbol: '^DJI' },
+  { label: '黄金', symbol: 'GC=F' },
+  { label: '原油', symbol: 'CL=F' },
+  { label: '比特币', symbol: 'BTC-USD' },
+];
 
-async function fetchMarketData() {
+// Method 1: Yahoo Finance v8 API
+async function fetchFromYahoo(): Promise<any[]> {
   const results: any[] = [];
   
-  // Fetch multiple symbols at once
-  const symbols = Object.values(MARKET_SYMBOLS).join(',');
-  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`;
-  
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-      next: { revalidate: 60 } // Cache for 1 minute
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch market data');
-    }
-    
-    const data = await response.json();
-    const quotes = data.quoteResponse?.result || [];
-    
-    // Map back to labels
-    const symbolToLabel: Record<string, string> = {};
-    for (const [label, symbol] of Object.entries(MARKET_SYMBOLS)) {
-      symbolToLabel[symbol] = label;
-    }
-    
-    for (const quote of quotes) {
-      const symbol = quote.symbol;
-      const label = symbolToLabel[symbol] || symbol;
+  // Fetch each symbol individually
+  for (const item of MARKET_SYMBOLS) {
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${item.symbol}?interval=1d&range=1d`;
       
-      let value = '';
-      if (symbol.includes('=X')) {
-        // Forex
-        value = quote.regularMarketPrice?.toFixed(4) || '0';
-      } else if (symbol === '^GSPC' || symbol === '^IXIC' || symbol === '^DJI') {
-        // Indices
-        value = quote.regularMarketPrice?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '0';
-      } else {
-        // Commodities/Crypto
-        value = '$' + (quote.regularMarketPrice?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '0');
-      }
-      
-      const change = quote.regularMarketChangePercent || 0;
-      const changeStr = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
-      
-      results.push({
-        label,
-        value,
-        change: changeStr,
-        up: change >= 0,
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+        next: { revalidate: 60 }
       });
+      
+      if (!response.ok) continue;
+      
+      const data = await response.json();
+      const result = data.chart?.result?.[0];
+      
+      if (result) {
+        const meta = result.meta;
+        const quote = result.indicators?.quote?.[0];
+        
+        const price = meta.regularMarketPrice || 0;
+        const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+        const change = ((price - prevClose) / prevClose) * 100;
+        
+        let displayValue: string;
+        if (item.symbol === '^GSPC' || item.symbol === '^IXIC' || item.symbol === '^DJI') {
+          displayValue = price.toLocaleString('en-US', { maximumFractionDigits: 2 });
+        } else if (item.symbol.includes('=X') || item.symbol === 'BTC-USD') {
+          displayValue = '$' + price.toLocaleString('en-US', { maximumFractionDigits: 2 });
+        } else {
+          displayValue = '$' + price.toFixed(2);
+        }
+        
+        results.push({
+          label: item.label,
+          value: displayValue,
+          change: (change >= 0 ? '+' : '') + change.toFixed(2) + '%',
+          up: change >= 0,
+        });
+      }
+    } catch (error) {
+      console.error(`Error fetching ${item.symbol}:`, error);
     }
     
-  } catch (error) {
-    console.error('Error fetching market data:', error);
-    // Return fallback data on error
-    return getFallbackData();
+    // Small delay between requests
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
   
-  return results.length > 0 ? results : getFallbackData();
+  return results;
 }
 
-function getFallbackData() {
+// Method 2: Fallback - use Finnhub (free API)
+async function fetchFromFinnhub(): Promise<any[]> {
+  const results: any[] = [];
+  const API_KEY = 'demo'; // Free demo key
+  
+  const symbolMap: Record<string, string> = {
+    '^GSPC': 'SPY',  // S&P 500 ETF
+    '^IXIC': 'QQQ',  // NASDAQ ETF
+    '^DJI': 'DIA',   // Dow ETF
+    'GC=F': 'XAUUSD', // Gold
+    'CL=F': 'CLUSD',  // Oil
+    'BTC-USD': 'BTCUSD', // Bitcoin
+  };
+  
+  for (const item of MARKET_SYMBOLS) {
+    try {
+      const symbol = symbolMap[item.symbol] || item.symbol;
+      const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${API_KEY}`;
+      
+      const response = await fetch(url, { next: { revalidate: 60 } });
+      if (!response.ok) continue;
+      
+      const data = await response.json();
+      
+      if (data.c) { // current price
+        const change = ((data.c - data.pc) / data.pc) * 100;
+        
+        results.push({
+          label: item.label,
+          value: '$' + data.c.toFixed(2),
+          change: (change >= 0 ? '+' : '') + change.toFixed(2) + '%',
+          up: change >= 0,
+        });
+      }
+    } catch (error) {
+      console.error(`Error fetching ${item.symbol} from Finnhub:`, error);
+    }
+  }
+  
+  return results;
+}
+
+// Method 3: Fallback - use Twelve Data (free API)
+async function fetchFromTwelveData(): Promise<any[]> {
+  const results: any[] = [];
+  const API_KEY = 'demo';
+  
+  const symbolMap: Record<string, string> = {
+    '^GSPC': 'SPX',
+    '^IXIC': 'IXIC',
+    '^DJI': 'DJI',
+    'GC=F': 'GC',
+    'CL=F': 'CL',
+    'BTC-USD': 'BTC/USD',
+  };
+  
+  for (const item of MARKET_SYMBOLS) {
+    try {
+      const symbol = symbolMap[item.symbol] || item.symbol;
+      const url = `https://api.twelvedata.com/quote?symbol=${symbol}&apikey=${API_KEY}`;
+      
+      const response = await fetch(url, { next: { revalidate: 60 } });
+      if (!response.ok) continue;
+      
+      const data = await response.json();
+      
+      if (data.close && data.percent_change) {
+        results.push({
+          label: item.label,
+          value: '$' + parseFloat(data.close).toFixed(2),
+          change: (parseFloat(data.percent_change) >= 0 ? '+' : '') + data.percent_change + '%',
+          up: parseFloat(data.percent_change) >= 0,
+        });
+      }
+    } catch (error) {
+      console.error(`Error fetching ${item.symbol} from Twelve Data:`, error);
+    }
+  }
+  
+  return results;
+}
+
+function getFallbackData(): any[] {
   return [
     { label: 'S&P 500', value: '6,050.00', change: '+0.0%', up: true },
     { label: '纳斯达克', value: '19,500.00', change: '+0.0%', up: true },
@@ -89,13 +161,33 @@ function getFallbackData() {
 
 export async function GET() {
   try {
-    const marketData = await fetchMarketData();
-    return NextResponse.json({ market: marketData });
+    // Try Yahoo Finance first
+    let data = await fetchFromYahoo();
+    
+    // If Yahoo fails, try Finnhub
+    if (data.length === 0) {
+      console.log('Trying Finnhub...');
+      data = await fetchFromFinnhub();
+    }
+    
+    // If Finnhub fails, try Twelve Data
+    if (data.length === 0) {
+      console.log('Trying Twelve Data...');
+      data = await fetchFromTwelveData();
+    }
+    
+    // If all fail, use fallback
+    if (data.length === 0) {
+      console.log('All APIs failed, using fallback data');
+      data = getFallbackData();
+    }
+    
+    return NextResponse.json({ market: data, source: 'Yahoo Finance' });
   } catch (error) {
     console.error('Market API error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch market data', market: getFallbackData() },
-      { status: 500 }
+      { status: 200 } // Return 200 with fallback data
     );
   }
 }

@@ -156,8 +156,16 @@ export default function Home() {
                 <article key={index} className="news-card">
                   <span className="category">{item.category || '新闻'}</span>
                   <h3>{item.title}</h3>
-                  <div className="meta">
+            <div className="meta">
                     <span className="source">📰 {item.source}</span>
+                    {item.date && (
+                      <span className="time">🕐 {new Date(item.date).toLocaleString('zh-CN', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })}</span>
+                    )}
                   </div>
                   <a 
                     href={item.url} 
