@@ -1,14 +1,34 @@
 import { NextResponse } from 'next/server';
 
-// News queries for each category
+// 中文新闻 RSS 源
+const RSS_FEEDS = [
+  // 主流中文媒体
+  'https://www.chinanews.com.cn/rss/scroll-news.xml',  // 中国新闻网
+  'https://www.sina.com.cn/rss/tech.xml',              // 新浪科技
+  'https://finance.sina.com.cn/stock//',                // 新浪财经
+  'https://news.baidu.com/n?cmd=1&class=cjinri',       // 百度财经
+  'https://www.yicai.com/news/rss',                    // 第一财经
+  'https://www.cls.cn/rss',                             // 财联社
+  'https://www.thepaper.cn/rss_news.xml',               // 澎湃新闻
+  'https://www.guancha.cn/news/',                       // 观察者网
+];
+
+// 备用：国际媒体中文版
+const BACKUP_FEEDS = [
+  'https://feeds.bbci.co.uk/zhongwen/simp/rss.xml',     // BBC 中文
+  'https://www.dw.com/zhvector/zh-14982?m=1&rss',       // DW 中文
+  'https://cn.reuters.com/rss-feed/CNTopStories/rss.xml', // 路透中文
+];
+
+// 中文关键词分类
 const QUERIES: Record<string, string[]> = {
-  all: ['breaking news', 'top stories today'],
-  tech: ['AI technology', 'artificial intelligence news', 'tech breaking'],
-  finance: ['stock market', 'finance economy', 'federal reserve'],
-  stock: ['US stock market', 'NASDAQ', 'Wall Street today'],
-  vc: ['venture capital', 'startup funding', 'tech funding'],
-  geo: ['geopolitics', 'world news', 'international'],
-  commodity: ['oil gold commodity', 'energy prices', 'markets'],
+  all: ['要闻', '今日头条', '热点新闻'],
+  tech: ['科技', '人工智能', 'AI', '互联网', '数码'],
+  finance: ['财经', '股票', '金融', '经济', 'A股', '港股'],
+  stock: ['股市', 'A股', '港股', '美股', '基金', '理财'],
+  vc: ['融资', '投资', '创业', '风投', '独角兽'],
+  geo: ['国际', '外交', '中美', '俄乌', '中东', '政治'],
+  commodity: ['黄金', '原油', '大宗商品', '能源', '天然气'],
 };
 
 // RSS feed URLs that work without CORS
